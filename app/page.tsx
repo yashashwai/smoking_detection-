@@ -5,6 +5,8 @@ import { Hero } from "@/components/dms/hero"
 import { ModeCard } from "@/components/dms/mode-card"
 import { DetectionPanel } from "@/components/dms/detection-panel"
 import { Footer } from "@/components/dms/footer"
+import { AnalyticsDashboard } from "@/components/dms/analytics-dashboard"
+import { SessionSummary } from "@/components/dms/session-summary"
 
 type Mode = "fatigue" | "smoking" | null
 
@@ -14,7 +16,9 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:500
 export default function HomePage() {
   const [selectedMode, setSelectedMode] = useState<Mode>(null)
   const [showPanel, setShowPanel] = useState(false)
+  const [showDashboard, setShowDashboard] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  const dashboardRef = useRef<HTMLDivElement>(null)
 
   const handleModeSelect = (mode: "fatigue" | "smoking") => {
     setSelectedMode(mode)
@@ -24,6 +28,7 @@ export default function HomePage() {
   const handleReset = () => {
     setShowPanel(false)
     setSelectedMode(null)
+    setShowDashboard(false)
   }
 
   // Smooth scroll to panel when mode is selected
@@ -78,6 +83,26 @@ export default function HomePage() {
                 onReset={handleReset}
                 backendUrl={BACKEND_URL}
               />
+            </div>
+          </section>
+        )}
+
+        {/* Dashboard and Reports Section */}
+        {showPanel && selectedMode && (
+          <section ref={dashboardRef} className="py-8 sm:py-12 border-t border-border">
+            <div className="container mx-auto px-4 space-y-8">
+              {/* Analytics Dashboard */}
+              <div>
+                <h2 className="text-2xl font-bold mb-6">Session Analytics</h2>
+                <AnalyticsDashboard mode={selectedMode} isActive={true} />
+              </div>
+
+              {/* Session Summary and Reports */}
+              <div className="grid lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1">
+                  <SessionSummary />
+                </div>
+              </div>
             </div>
           </section>
         )}

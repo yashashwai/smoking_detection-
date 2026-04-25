@@ -1,11 +1,18 @@
 "use client"
 
-import { useRef, useState, useCallback } from "react"
+import { useRef, useState, useCallback, useEffect } from "react"
 import Webcam from "react-webcam"
 import { Button } from "@/components/ui/button"
 import { Camera, Square, AlertTriangle, CheckCircle, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ResultCard } from "./result-card"
+import { AnalyticsDashboard } from "./analytics-dashboard"
+import { AlertHistory } from "./alert-history"
+import { PerformanceMonitor } from "./performance-monitor"
+import { useSessionStore } from "@/lib/stores/session-store"
+import { FatigueScoringEngine } from "@/lib/scoring/fatigue-scorer"
+import { AlertSystem } from "@/lib/analytics/alert-system"
+import { useAudioAlert } from "@/hooks/use-audio-alert"
 
 interface WebcamTabProps {
   mode: "fatigue" | "smoking"
@@ -21,9 +28,24 @@ type DetectionResult = {
 export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
   const webcamRef = useRef<Webcam>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const frameCountRef = useRef(0)
+  const startTimeRef = useRef<number | null>(null)
+  
   const [isStreaming, setIsStreaming] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [result, setResult] = useState<DetectionResult>(null)
+  const [showAnalytics, setShowAnalytics] = useState(false)
+  
+  const sessionStore = useSessionStore()
+  const scoringEngineRef = useRef<FatigueScoringEngine | null>(null)
+  const alertSystemRef = useRef<AlertSystem | null>(null)
+  const { triggerAlert } = useAudioAlert()
+  
+  // Initialize engines
+  useEffect(() => {
+    scoringEngineRef.current = new FatigueScoringEngine()
+    alertSystemRef.current = new AlertSystem({ voiceEnabled: true })
+  }, [])
 
   const captureAndDetect = useCallback(async () => {
     if (!webcamRef.current) return
@@ -32,6 +54,7 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
     if (!imageSrc) return
 
     setIsProcessing(true)
+    const apiStartTime = performance.now()
 
     try {
       // Convert base64 to blob
@@ -52,35 +75,97 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
       if (!response.ok) throw new Error("Detection failed")
 
       const data = await response.json()
+      const detected = data.detected ?? data.fatigue ?? data.smoking ?? false
+      const confidence = data.confidence ?? 0.85
+      
+      // For fatigue mode, use scoring engine
+      let fatigueScore = 0
+      let alertLevel = undefined
+      if (mode === "fatigue" && scoringEngineRef.current) {
+        const scoringResult = scoringEngineRef.current.addFrame(confidence)
+        fatigueScore = scoringResult.score
+        alertLevel = scoringResult.state
+        
+        // Check if alert should be triggered
+        if (alertSystemRef.current) {
+          const alert = alertSystemRef.current.evaluateAndAlert(
+            fatigueScore,
+            frameCountRef.current,
+            `Fatigue level: ${alertLevel}`
+          )
+          if (alert) {
+            triggerAlert(alert)
+          }
+        }
+      }
+
       setResult({
-        detected: data.detected ?? data.fatigue ?? data.smoking ?? false,
-        confidence: data.confidence ?? 0.85,
-        label: data.label ?? (mode === "fatigue" 
-          ? (data.detected ? "DROWSY" : "ALERT") 
-          : (data.detected ? "SMOKING" : "NOT SMOKING")),
+        detected,
+        confidence,
+        label: mode === "fatigue" 
+          ? (detected ? "DROWSY" : "ALERT") 
+          : (detected ? "SMOKING" : "NOT SMOKING"),
       })
+
+      // Record metrics in session store
+      const apiLatency = performance.now() - apiStartTime
+      sessionStore.addEvent({
+        timestamp: Date.now(),
+        mode,
+        prediction: confidence,
+        fatigueScore: mode === "fatigue" ? fatigueScore : undefined,
+        alertLevel: mode === "fatigue" ? alertLevel : undefined,
+        frameIndex: frameCountRef.current,
+      })
+      
+      sessionStore.updatePerformance(30, apiLatency, 0)
+      frameCountRef.current++
     } catch {
       // Simulate result for demo purposes when backend is unavailable
       const simulatedDetected = Math.random() > 0.6
+      const simulatedConfidence = 0.75 + Math.random() * 0.2
+      
+      let fatigueScore = 0
+      let alertLevel = undefined
+      if (mode === "fatigue" && scoringEngineRef.current) {
+        const scoringResult = scoringEngineRef.current.addFrame(simulatedConfidence)
+        fatigueScore = scoringResult.score
+        alertLevel = scoringResult.state
+      }
+      
       setResult({
         detected: simulatedDetected,
-        confidence: 0.75 + Math.random() * 0.2,
+        confidence: simulatedConfidence,
         label: mode === "fatigue" 
           ? (simulatedDetected ? "DROWSY" : "ALERT") 
           : (simulatedDetected ? "SMOKING" : "NOT SMOKING"),
       })
+
+      sessionStore.addEvent({
+        timestamp: Date.now(),
+        mode,
+        prediction: simulatedConfidence,
+        fatigueScore: mode === "fatigue" ? fatigueScore : undefined,
+        alertLevel: mode === "fatigue" ? alertLevel : undefined,
+        frameIndex: frameCountRef.current,
+      })
+      
+      frameCountRef.current++
     } finally {
       setIsProcessing(false)
     }
-  }, [mode, backendUrl])
+  }, [mode, backendUrl, sessionStore, triggerAlert])
 
   const startDetection = useCallback(() => {
+    sessionStore.initSession(mode)
+    startTimeRef.current = Date.now()
+    frameCountRef.current = 0
     setIsStreaming(true)
     // Capture and detect every 2 seconds
     intervalRef.current = setInterval(captureAndDetect, 2000)
     // Initial capture
     captureAndDetect()
-  }, [captureAndDetect])
+  }, [captureAndDetect, mode, sessionStore])
 
   const stopDetection = useCallback(() => {
     setIsStreaming(false)
@@ -88,7 +173,9 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
       clearInterval(intervalRef.current)
       intervalRef.current = null
     }
-  }, [])
+    sessionStore.endSession()
+    setShowAnalytics(true)
+  }, [sessionStore])
 
   return (
     <div className="space-y-6">
@@ -184,8 +271,30 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
         )}
       </div>
 
+      {/* Performance Monitor */}
+      {isStreaming && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <PerformanceMonitor />
+          <AlertHistory maxItems={5} />
+        </div>
+      )}
+
+      {/* Analytics after session */}
+      {showAnalytics && !isStreaming && (
+        <div className="space-y-6">
+          <Button
+            variant="outline"
+            onClick={() => setShowAnalytics(false)}
+            className="w-full"
+          >
+            Start New Session
+          </Button>
+          <AnalyticsDashboard mode={mode} isActive={false} />
+        </div>
+      )}
+
       {/* Result Card (when not streaming) */}
-      {!isStreaming && result && (
+      {!isStreaming && !showAnalytics && result && (
         <ResultCard 
           detected={result.detected}
           confidence={result.confidence}
