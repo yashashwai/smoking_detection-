@@ -23,6 +23,11 @@ type DetectionResult = {
   detected: boolean
   confidence: number
   label: string
+  microFatigueCount?: number
+  smokingEventCount?: number
+  lightingCondition?: "Normal" | "Low"
+  enhancementActive?: boolean
+  snapshotTimestamp?: number
 } | null
 
 export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
@@ -78,6 +83,14 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
       const detected = data.detected ?? data.fatigue ?? data.smoking ?? false
       const confidence = data.confidence ?? 0.85
       
+      // Extract new metrics from backend response
+      const microFatigueCount = data.micro_fatigue_count ?? data.microFatigueCount ?? 0
+      const smokingEventCount = data.smoking_events ?? data.smokingEventCount ?? 0
+      const lightingCondition = data.lighting_condition ?? data.lightingCondition ?? 'Normal'
+      const enhancementActive = data.enhancement_active ?? data.enhancementActive ?? false
+      const snapshotCaptured = data.snapshot_captured ?? data.snapshotCaptured ?? false
+      const snapshotTimestamp = data.snapshot_timestamp ?? data.snapshotTimestamp
+      
       // For fatigue mode, use scoring engine
       let fatigueScore = 0
       let alertLevel = undefined
@@ -105,6 +118,11 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
         label: mode === "fatigue" 
           ? (detected ? "DROWSY" : "ALERT") 
           : (detected ? "SMOKING" : "NOT SMOKING"),
+        microFatigueCount: mode === "fatigue" ? microFatigueCount : undefined,
+        smokingEventCount: mode === "smoking" ? smokingEventCount : undefined,
+        lightingCondition: lightingCondition as "Normal" | "Low",
+        enhancementActive,
+        snapshotTimestamp: snapshotCaptured ? snapshotTimestamp || Date.now() : undefined,
       })
 
       // Record metrics in session store
@@ -116,6 +134,12 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
         fatigueScore: mode === "fatigue" ? fatigueScore : undefined,
         alertLevel: mode === "fatigue" ? alertLevel : undefined,
         frameIndex: frameCountRef.current,
+        microFatigueCount: mode === "fatigue" ? microFatigueCount : undefined,
+        smokingEventCount: mode === "smoking" ? smokingEventCount : undefined,
+        lightingCondition: lightingCondition as "Normal" | "Low",
+        enhancementActive,
+        snapshotCaptured,
+        snapshotTimestamp: snapshotCaptured ? snapshotTimestamp || Date.now() : undefined,
       })
       
       sessionStore.updatePerformance(30, apiLatency, 0)
@@ -124,6 +148,13 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
       // Simulate result for demo purposes when backend is unavailable
       const simulatedDetected = Math.random() > 0.6
       const simulatedConfidence = 0.75 + Math.random() * 0.2
+      
+      // Simulate new metrics
+      const simulatedMicroFatigue = Math.floor(Math.random() * 8)
+      const simulatedSmokingEvents = Math.floor(Math.random() * 8)
+      const simulatedLighting = Math.random() > 0.3 ? 'Normal' : 'Low'
+      const simulatedEnhancementActive = simulatedLighting === 'Low'
+      const simulatedSnapshotCaptured = Math.random() > 0.7
       
       let fatigueScore = 0
       let alertLevel = undefined
@@ -139,6 +170,11 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
         label: mode === "fatigue" 
           ? (simulatedDetected ? "DROWSY" : "ALERT") 
           : (simulatedDetected ? "SMOKING" : "NOT SMOKING"),
+        microFatigueCount: mode === "fatigue" ? simulatedMicroFatigue : undefined,
+        smokingEventCount: mode === "smoking" ? simulatedSmokingEvents : undefined,
+        lightingCondition: simulatedLighting as "Normal" | "Low",
+        enhancementActive: simulatedEnhancementActive,
+        snapshotTimestamp: simulatedSnapshotCaptured ? Date.now() : undefined,
       })
 
       sessionStore.addEvent({
@@ -148,6 +184,12 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
         fatigueScore: mode === "fatigue" ? fatigueScore : undefined,
         alertLevel: mode === "fatigue" ? alertLevel : undefined,
         frameIndex: frameCountRef.current,
+        microFatigueCount: mode === "fatigue" ? simulatedMicroFatigue : undefined,
+        smokingEventCount: mode === "smoking" ? simulatedSmokingEvents : undefined,
+        lightingCondition: simulatedLighting as "Normal" | "Low",
+        enhancementActive: simulatedEnhancementActive,
+        snapshotCaptured: simulatedSnapshotCaptured,
+        snapshotTimestamp: simulatedSnapshotCaptured ? Date.now() : undefined,
       })
       
       frameCountRef.current++
@@ -300,6 +342,11 @@ export function WebcamTab({ mode, backendUrl }: WebcamTabProps) {
           confidence={result.confidence}
           label={result.label}
           mode={mode}
+          microFatigueCount={result.microFatigueCount}
+          smokingEventCount={result.smokingEventCount}
+          lightingCondition={result.lightingCondition}
+          enhancementActive={result.enhancementActive}
+          snapshotTimestamp={result.snapshotTimestamp}
         />
       )}
     </div>

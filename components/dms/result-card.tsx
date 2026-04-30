@@ -9,10 +9,24 @@ interface ResultCardProps {
   confidence: number
   label: string
   mode: "fatigue" | "smoking"
+  microFatigueCount?: number
+  smokingEventCount?: number
+  lightingCondition?: "Normal" | "Low"
+  enhancementActive?: boolean
+  snapshotTimestamp?: number
 }
 
-export function ResultCard({ detected, confidence, label, mode }: ResultCardProps) {
+export function ResultCard({ detected, confidence, label, mode, microFatigueCount, smokingEventCount, lightingCondition, enhancementActive, snapshotTimestamp }: ResultCardProps) {
   const confidencePercent = Math.round(confidence * 100)
+  
+  const formatSnapshotTime = (timestamp?: number) => {
+    if (!timestamp) return null
+    return new Date(timestamp).toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    })
+  }
   
   return (
     <div className={cn(
@@ -86,6 +100,74 @@ export function ResultCard({ detected, confidence, label, mode }: ResultCardProp
                 : "[&>[data-slot=progress-indicator]]:bg-success"
             )}
           />
+        </div>
+
+        {/* Additional Metrics */}
+        <div className="w-full grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-border/30">
+          {mode === "fatigue" && microFatigueCount !== undefined && (
+            <>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">Micro-Fatigue Events</p>
+                <p className="text-lg font-bold">{microFatigueCount}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">Severity</p>
+                <p className={cn(
+                  "text-lg font-bold",
+                  microFatigueCount >= 5 ? "text-destructive" :
+                  microFatigueCount >= 3 ? "text-yellow-500" :
+                  "text-success"
+                )}>
+                  {microFatigueCount >= 5 ? "High" : microFatigueCount >= 3 ? "Medium" : "Low"}
+                </p>
+              </div>
+            </>
+          )}
+
+          {mode === "smoking" && smokingEventCount !== undefined && (
+            <>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">Smoking Events</p>
+                <p className="text-lg font-bold">{smokingEventCount}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">Frequency</p>
+                <p className={cn(
+                  "text-lg font-bold",
+                  smokingEventCount >= 5 ? "text-destructive" :
+                  smokingEventCount >= 3 ? "text-yellow-500" :
+                  "text-success"
+                )}>
+                  {smokingEventCount >= 5 ? "High" : smokingEventCount >= 3 ? "Medium" : "Low"}
+                </p>
+              </div>
+            </>
+          )}
+
+          {lightingCondition && (
+            <>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">Lighting</p>
+                <p className={cn(
+                  "text-lg font-bold",
+                  lightingCondition === "Low" ? "text-yellow-500" : "text-success"
+                )}>
+                  {lightingCondition}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">Enhancement</p>
+                <p className="text-lg font-bold">{enhancementActive ? "ON" : "OFF"}</p>
+              </div>
+            </>
+          )}
+
+          {snapshotTimestamp && (
+            <div className="col-span-2 text-center p-2 rounded-lg bg-primary/10 border border-primary/30">
+              <p className="text-xs text-muted-foreground mb-1">Snapshot Captured</p>
+              <p className="text-sm font-semibold">{formatSnapshotTime(snapshotTimestamp)}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

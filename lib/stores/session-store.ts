@@ -8,6 +8,12 @@ export interface DetectionEvent {
   fatigueScore?: number;
   alertLevel?: 'SAFE' | 'WARNING' | 'CRITICAL';
   frameIndex?: number;
+  microFatigueCount?: number;
+  smokingEventCount?: number;
+  lightingCondition?: 'Normal' | 'Low';
+  enhancementActive?: boolean;
+  snapshotCaptured?: boolean;
+  snapshotTimestamp?: number;
 }
 
 export interface SessionMetrics {
@@ -24,6 +30,23 @@ export interface SessionMetrics {
     level: 'WARNING' | 'CRITICAL';
     reason: string;
   }>;
+  microFatigueStats?: {
+    totalCount: number;
+    severity: 'Low' | 'Medium' | 'High';
+  };
+  smokingStats?: {
+    totalCount: number;
+    frequency: 'Low' | 'Medium' | 'High';
+  };
+  snapshotStats?: {
+    totalSnapshots: number;
+    lastSnapshotTime?: number;
+  };
+  lightingStats?: {
+    normalCount: number;
+    lowCount: number;
+    enhancementActivatedCount: number;
+  };
 }
 
 interface SessionStore {
@@ -78,6 +101,49 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     set((state) => {
       const newEvents = [...state.events, fullEvent];
+      
+      // Calculate micro-fatigue stats (if fatigue mode)
+      let microFatigueStats = state.metrics?.microFatigueStats;
+      if (state.metrics?.mode === 'fatigue' && fullEvent.microFatigueCount !== undefined) {
+        const totalMicroFatigue = newEvents.reduce((sum, e) => sum + (e.microFatigueCount || 0), 0);
+        let severity: 'Low' | 'Medium' | 'High' = 'Low';
+        if (totalMicroFatigue >= 5) severity = 'High';
+        else if (totalMicroFatigue >= 3) severity = 'Medium';
+        microFatigueStats = { totalCount: totalMicroFatigue, severity };
+      }
+
+      // Calculate smoking stats (if smoking mode)
+      let smokingStats = state.metrics?.smokingStats;
+      if (state.metrics?.mode === 'smoking' && fullEvent.smokingEventCount !== undefined) {
+        const totalSmokingEvents = newEvents.reduce((sum, e) => sum + (e.smokingEventCount || 0), 0);
+        let frequency: 'Low' | 'Medium' | 'High' = 'Low';
+        if (totalSmokingEvents >= 5) frequency = 'High';
+        else if (totalSmokingEvents >= 3) frequency = 'Medium';
+        smokingStats = { totalCount: totalSmokingEvents, frequency };
+      }
+
+      // Calculate snapshot stats
+      let snapshotStats = state.metrics?.snapshotStats || { totalSnapshots: 0 };
+      if (fullEvent.snapshotCaptured) {
+        snapshotStats = {
+          totalSnapshots: (snapshotStats.totalSnapshots || 0) + 1,
+          lastSnapshotTime: fullEvent.snapshotTimestamp,
+        };
+      }
+
+      // Calculate lighting stats
+      let lightingStats = state.metrics?.lightingStats || { normalCount: 0, lowCount: 0, enhancementActivatedCount: 0 };
+      if (fullEvent.lightingCondition) {
+        if (fullEvent.lightingCondition === 'Normal') {
+          lightingStats.normalCount++;
+        } else if (fullEvent.lightingCondition === 'Low') {
+          lightingStats.lowCount++;
+        }
+        if (fullEvent.enhancementActive) {
+          lightingStats.enhancementActivatedCount++;
+        }
+      }
+
       const newMetrics = state.metrics
         ? {
             ...state.metrics,
@@ -85,6 +151,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             totalFrames: newEvents.length,
             avgScore: newEvents.reduce((sum, e) => sum + (e.prediction || 0), 0) / newEvents.length,
             maxScore: Math.max(...newEvents.map((e) => e.prediction || 0), 0),
+            microFatigueStats,
+            smokingStats,
+            snapshotStats,
+            lightingStats,
           }
         : null;
 
